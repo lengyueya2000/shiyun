@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Shiyun" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F7F4EA</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
