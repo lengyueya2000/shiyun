@@ -19,20 +19,25 @@ REPO_DIR = Path(__file__).parent / "chinese-poetry"
 OUT_PATH = Path(__file__).parent.parent / "app/src/main/assets/poems.json"
 PUNCT = re.compile(r"[、。,;:!?「」『』《》()\[\]·\s]")
 
-# (模糊匹配的文件名片段, 朝代, 类型, featured, 采样上限)
-# 片段修正说明(相对原简报):
-# - 宋诗/全宋词 在本数据集无同名文件;全唐诗/全宋词 实际主语料为 poet.tang.*/ci.song.*,
-#   load_source 已过滤无内容(paragraphs 为空或全空白/标点)的记录,可安全纳入。
 # - 明诗/清诗/小学/初中/高中 数据集中不存在对应文件。
+# - 元曲(yuanqu.json, raw dynasty 为 "yuan")/曹操诗集(caocao.json, 无 author/dynasty)/
+#   纳兰性德诗集(para 字段为正文键, 无 dynasty)分别经朝代别名映射、author 缺省、para 回退纳入。
 SOURCES = [
-    ("唐诗三百首", "唐", "诗", True, 0),        # 0 = 全量
-    ("宋词三百首", "宋", "词", True, 0),
-    ("shijing", "先秦", "诗", True, 0),
-    ("chuci", "先秦", "诗", False, 40),
-    ("shuimotangshi", "唐", "诗", False, 0),
-    ("poet.tang", "唐", "诗", False, 600),
-    ("ci.song", "宋", "词", False, 300),
+    # (模糊匹配的文件名片段, 朝代, 类型, featured, 采样上限, author 缺省)
+    ("唐诗三百首", "唐", "诗", True, 0, None),         # 0 = 全量
+    ("宋词三百首", "宋", "词", True, 0, None),
+    ("shijing", "先秦", "诗", True, 0, None),
+    ("chuci", "先秦", "诗", False, 40, None),
+    ("shuimotangshi", "唐", "诗", False, 0, None),
+    ("poet.tang", "唐", "诗", False, 600, None),
+    ("ci.song", "宋", "词", False, 300, None),
+    ("yuanqu", "元", "词", False, 300, None),
+    ("caocao", "魏晋", "诗", False, 0, "曹操"),
+    ("纳兰性德诗集", "明清", "词", False, 0, None),
 ]
+
+# 数据集部分来源的 dynasty 字段为英文, 统一映射为中文朝代名
+DYNASTY_ALIASES = {"yuan": "元"}
 
 
 def make_id(title: str, author: str, first_line: str) -> int:
@@ -45,14 +50,16 @@ def dedupe_key(rec: dict) -> tuple:
     return (rec["title"], rec["author"], first)
 
 
-def normalize_record(raw: dict, dynasty: str, kind: str, featured: bool) -> dict:
+def normalize_record(raw: dict, dynasty: str, kind: str, featured: bool, author_default: str | None = None) -> dict:
     title = (raw.get("title") or raw.get("name") or raw.get("rhythmic") or raw.get("chapter") or "").strip()
-    paragraphs = raw.get("paragraphs") or raw.get("content") or []
+    # "para" 仅纳兰性德诗集.json 使用, 作为额外正文键回退
+    paragraphs = raw.get("paragraphs") or raw.get("content") or raw.get("para") or []
     paragraphs = [" ".join(line) if isinstance(line, list) else line for line in paragraphs]
+    raw_dynasty = raw.get("dynasty")
     return {
         "title": title,
-        "dynasty": raw.get("dynasty") or dynasty,
-        "author": (raw.get("author") or "佚名").strip(),
+        "dynasty": DYNASTY_ALIASES.get(raw_dynasty, raw_dynasty) or dynasty,
+        "author": (raw.get("author") or author_default or "佚名").strip(),
         "paragraphs": paragraphs,
         "kind": kind,
         "translation": raw.get("translation"),
@@ -79,8 +86,8 @@ def to_simplified(rec: dict) -> dict:
 
 
 def has_content(rec: dict) -> bool:
-    # 丢弃 paragraphs 为空或全为空白/标点的记录
-    return any(PUNCT.sub("", line) for line in rec["paragraphs"])
+    # 丢弃 title 为空或 paragraphs 为空/全为空白/标点的记录
+    return bool(rec["title"]) and any(PUNCT.sub("", line) for line in rec["paragraphs"])
 
 
 def dedupe(records: list[dict]) -> list[dict]:
@@ -97,7 +104,7 @@ def collect_files(dataset: Path, fragment: str) -> list[Path]:
     return sorted(p for p in dataset.rglob("*.json") if fragment in p.name)
 
 
-def load_source(dataset: Path, fragment: str, dynasty: str, kind: str, featured: bool, cap: int, rng: random.Random) -> list[dict]:
+def load_source(dataset: Path, fragment: str, dynasty: str, kind: str, featured: bool, cap: int, rng: random.Random, author_default: str | None = None) -> list[dict]:
     files = collect_files(dataset, fragment)
     records = []
     for path in files:
@@ -107,7 +114,10 @@ def load_source(dataset: Path, fragment: str, dynasty: str, kind: str, featured:
             continue
         if not isinstance(data, list):
             continue
-        records.extend(normalize_record(raw, dynasty, kind, featured) for raw in data if isinstance(raw, dict))
+        records.extend(
+            normalize_record(raw, dynasty, kind, featured, author_default)
+            for raw in data if isinstance(raw, dict)
+        )
     records = [rec for rec in records if has_content(rec)]
     if cap and len(records) > cap:
         records = rng.sample(records, cap)
@@ -119,8 +129,8 @@ def build(dataset_dir: Path) -> list[dict]:
         sys.exit(f"数据集不存在: {dataset_dir},请先 git clone --depth 1 https://github.com/chinese-poetry/chinese-poetry {dataset_dir}")
     rng = random.Random(42)
     records = []
-    for fragment, dynasty, kind, featured, cap in SOURCES:
-        records.extend(load_source(dataset_dir, fragment, dynasty, kind, featured, cap, rng))
+    for fragment, dynasty, kind, featured, cap, author_default in SOURCES:
+        records.extend(load_source(dataset_dir, fragment, dynasty, kind, featured, cap, rng, author_default))
     # 繁→简转换(normalize 之后、去重与 id 生成之前;转换幂等)
     records = [to_simplified(rec) for rec in records]
     records = dedupe(records)

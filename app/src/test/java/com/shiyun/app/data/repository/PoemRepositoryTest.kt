@@ -61,8 +61,8 @@ class PoemRepositoryTest {
     @Test
     fun `importIfNeeded 导入真实 assets 全量数据`() = runTest {
         repo.importIfNeeded()
-        assertEquals(2003, dao.count())
+        assertEquals(2589, dao.count())
         repo.importIfNeeded()
-        assertEquals(2003, dao.count())
+        assertEquals(2589, dao.count())
     }
 }

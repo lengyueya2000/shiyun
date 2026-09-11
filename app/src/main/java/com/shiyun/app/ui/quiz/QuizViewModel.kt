@@ -22,7 +22,12 @@ data class QuizSession(
     val finished: Boolean = false,
 )
 
-data class QuizUiState(val levels: List<LevelUi> = emptyList(), val active: QuizSession? = null)
+data class QuizUiState(
+    val levels: List<LevelUi> = emptyList(),
+    val active: QuizSession? = null,
+    val loading: Boolean = true,
+    val loadFailed: Boolean = false,
+)
 
 class QuizViewModel(private val container: AppContainer) : ViewModel() {
     private val generator = QuizGenerator()
@@ -31,19 +36,34 @@ class QuizViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            container.poemRepository.importIfNeeded()
-            container.poemRepository.all().let { poems -> rebuild(poems, emptyList()) }
             container.quizRepository.observeStates().collect { states ->
-                _state.update { it.copy(levels = buildLevels(states)) }
+                quizStates = states
+                rebuildLevels()
+            }
+        }
+        loadLevels()
+    }
+
+    private var allPoems: List<com.shiyun.app.data.db.Poem> = emptyList()
+    private var quizStates: List<com.shiyun.app.data.db.QuizState> = emptyList()
+
+    /** 加载诗词库并重建关卡;导入失败时置 loadFailed,可经 retryLoad 重试。 */
+    fun loadLevels() {
+        _state.update { it.copy(loading = true, loadFailed = false) }
+        viewModelScope.launch {
+            try {
+                container.poemRepository.importIfNeeded()
+                allPoems = container.poemRepository.all()
+                _state.update { it.copy(loading = false) }
+                rebuildLevels()
+            } catch (e: Exception) {
+                _state.update { it.copy(loading = false, loadFailed = true) }
             }
         }
     }
 
-    private var allPoems: List<com.shiyun.app.data.db.Poem> = emptyList()
-
-    private fun rebuild(poems: List<com.shiyun.app.data.db.Poem>, states: List<com.shiyun.app.data.db.QuizState>) {
-        allPoems = poems
-        _state.update { it.copy(levels = buildLevels(states)) }
+    private fun rebuildLevels() {
+        _state.update { it.copy(levels = buildLevels(quizStates)) }
     }
 
     private fun buildLevels(states: List<com.shiyun.app.data.db.QuizState>): List<LevelUi> {

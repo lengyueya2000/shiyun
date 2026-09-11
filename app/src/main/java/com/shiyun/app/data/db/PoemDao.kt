@@ -37,7 +37,7 @@ interface PoemDao {
     )
     suspend fun browse(dynasty: String?, kind: String?): List<Poem>
 
-    @Query("SELECT * FROM poems WHERE featured = 1")
+    @Query("SELECT * FROM poems WHERE featured = 1 ORDER BY id")
     suspend fun featured(): List<Poem>
 
     @Query("SELECT * FROM poems")

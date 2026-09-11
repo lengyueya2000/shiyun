@@ -34,7 +34,7 @@ fun QuizScreen() {
 
     val session = state.active
     if (session == null) {
-        LevelList(state, onOpen = vm::openLevel)
+        LevelList(state, onOpen = vm::openLevel, onRetry = vm::loadLevels)
     } else if (session.finished) {
         ResultView(session, onExit = vm::exitSession, onRetry = vm::retry)
     } else {
@@ -43,10 +43,19 @@ fun QuizScreen() {
 }
 
 @Composable
-private fun LevelList(state: QuizUiState, onOpen: (String) -> Unit) {
+private fun LevelList(state: QuizUiState, onOpen: (String) -> Unit, onRetry: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("背诗闯关", style = MaterialTheme.typography.headlineMedium)
-        if (state.levels.isEmpty()) Text("数据加载中…", color = FadedInk)
+        if (state.levels.isEmpty()) {
+            if (state.loadFailed) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("数据加载失败", color = FadedInk)
+                    TextButton(onClick = onRetry) { Text("重试") }
+                }
+            } else {
+                Text("数据加载中…", color = FadedInk)
+            }
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.levels, key = { it.dynasty }) { level ->
                 Card(modifier = Modifier.fillMaxWidth()) {
