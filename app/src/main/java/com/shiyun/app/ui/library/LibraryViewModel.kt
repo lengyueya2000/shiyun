@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shiyun.app.AppContainer
 import com.shiyun.app.data.db.Poem
-import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -21,6 +21,7 @@ data class LibraryUiState(
 class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state
+    private var refreshJob: Job? = null
 
     init {
         refresh()
@@ -42,14 +43,21 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     private fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             val s = _state.value
             val results = if (s.query.isBlank()) {
                 container.poemRepository.browse(s.dynasty, s.kind)
             } else {
                 container.poemRepository.search(s.query, s.dynasty, s.kind)
             }
-            _state.update { it.copy(results = results, searched = true) }
+            _state.update {
+                if (it.query == s.query && it.dynasty == s.dynasty && it.kind == s.kind) {
+                    it.copy(results = results, searched = true)
+                } else {
+                    it
+                }
+            }
         }
     }
 }
