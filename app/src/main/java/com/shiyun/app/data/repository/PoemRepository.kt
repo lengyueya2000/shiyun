@@ -20,6 +20,8 @@ class PoemRepository(
 
     fun observePoem(id: Long): Flow<Poem?> = dao.observeById(id)
 
+    suspend fun poemById(id: Long): Poem? = withContext(io) { dao.getById(id) }
+
     suspend fun search(raw: String, dynasty: String?, kind: String?): List<Poem> = withContext(io) {
         MatchQueryBuilder.build(raw)?.let { dao.searchFiltered(it, dynasty, kind) } ?: emptyList()
     }
