@@ -1,6 +1,7 @@
 package com.shiyun.app
 
 import android.app.Application
+import android.util.Log
 import com.shiyun.app.data.assets.AssetsPoemImporter
 import com.shiyun.app.data.db.ShiyunDatabase
 import com.shiyun.app.data.repository.PoemRepository
@@ -22,6 +23,12 @@ class ShiyunApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        appScope.launch { container.poemRepository.importIfNeeded() }
+        appScope.launch {
+            try {
+                container.poemRepository.importIfNeeded()
+            } catch (e: Exception) {
+                Log.w("ShiyunApp", "首次导入诗词数据失败,待 UI 层重试", e)
+            }
+        }
     }
 }
