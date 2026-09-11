@@ -8,17 +8,21 @@ class QuizGenerator(private val random: Random = Random(42)) {
     /** 兼容 java.util.Random（测试以 `java.util.Random(7)` 构造）。 */
     constructor(random: java.util.Random) : this(Random(random.nextLong()))
 
+    /**
+     * 生成至多 [count] 道题。当某题在所有题型(含兜底作者题)下素材均不足时,
+     * 该题会被跳过,因此返回列表长度可能小于 [count]。
+     */
     fun generate(levelPoems: List<Poem>, distractorPool: List<Poem>, count: Int = 5): List<QuizQuestion> {
         val questions = mutableListOf<QuizQuestion>()
         val types = listOf(Type.FILL, Type.NEXT, Type.AUTHOR).shuffled(random)
         for (i in 0 until count) {
             val question = buildInOrder(levelPoems, distractorPool, listOf(types[i % types.size], Type.AUTHOR))
-            questions += question
+            question?.let { questions += it }
         }
         return questions
     }
 
-    private fun buildInOrder(levelPoems: List<Poem>, pool: List<Poem>, types: List<Type>): QuizQuestion {
+    private fun buildInOrder(levelPoems: List<Poem>, pool: List<Poem>, types: List<Type>): QuizQuestion? {
         for (type in types) {
             when (type) {
                 Type.FILL -> fillBlank(levelPoems, pool)?.let { return it }
@@ -26,8 +30,8 @@ class QuizGenerator(private val random: Random = Random(42)) {
                 Type.AUTHOR -> authorQuestion(levelPoems, pool)?.let { return it }
             }
         }
-        // 完全无素材:占位作者题
-        return authorQuestion(levelPoems, pool)!!
+        // 所有题型素材均不足:跳过该题(返回 null,由 generate 过滤)
+        return null
     }
 
     private fun options(answer: String, distractors: List<String>): List<String> =
@@ -67,7 +71,7 @@ class QuizGenerator(private val random: Random = Random(42)) {
         val otherLines = pool.asSequence().flatMap { it.paragraphs.asSequence() }
             .filter { it != answer && it != line }.distinct().toList()
         if (otherLines.size < 3) return null
-        val distractors = List(3) { otherLines[random.nextInt(otherLines.size)] }
+        val distractors = otherLines.shuffled(random).take(3)
         return QuizQuestion.NextLine(line, answer, options(answer, distractors))
     }
 
@@ -77,7 +81,7 @@ class QuizGenerator(private val random: Random = Random(42)) {
         val answer = poem.author
         val others = pool.map { it.author }.filter { it != answer }.distinct()
         if (others.size < 3) return null
-        val distractors = List(3) { others[random.nextInt(others.size)] }
+        val distractors = others.shuffled(random).take(3)
         return QuizQuestion.AuthorAttribution(poem.paragraphs.firstOrNull() ?: poem.title, answer, options(answer, distractors))
     }
 

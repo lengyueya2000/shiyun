@@ -60,6 +60,22 @@ class QuizGeneratorTest {
     }
 
     @Test
+    fun `四位作者素材下选项仍为四个且含答案`() {
+        repeat(200) {
+            for (q in generator.generate(pool.take(4), pool.take(4))) {
+                val (options, answer) = when (q) {
+                    is QuizQuestion.FillBlank -> q.options to q.answer
+                    is QuizQuestion.NextLine -> q.options to q.answer
+                    is QuizQuestion.AuthorAttribution -> q.options to q.answer
+                }
+                assertEquals(4, options.size)
+                assertEquals(options.size, options.distinct().size)
+                assertTrue(answer in options)
+            }
+        }
+    }
+
+    @Test
     fun `DynastyLevels 只含不少于五首的朝代`() {
         val poems = pool + (6L..10L).map { poem(it, "杜牧", listOf("清明时节雨纷纷"), dynasty = "宋") }
         assertEquals(listOf("唐", "宋"), DynastyLevels.available(poems))
