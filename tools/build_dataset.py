@@ -1,6 +1,7 @@
 """从 chinese-poetry 数据集生成 assets/poems.json。用法:
   python tools/build_dataset.py [--check]
 数据集仓库克隆到 tools/chinese-poetry(已 gitignore)。
+依赖(仅本脚本与测试环境需要): pip install opencc-python-reimplemented
 """
 import argparse
 import hashlib
@@ -10,16 +11,18 @@ import re
 import sys
 from pathlib import Path
 
+import opencc
+
+_T2S = opencc.OpenCC("t2s")
+
 REPO_DIR = Path(__file__).parent / "chinese-poetry"
 OUT_PATH = Path(__file__).parent.parent / "app/src/main/assets/poems.json"
 PUNCT = re.compile(r"[、。,;:!?「」『』《》()\[\]·\s]")
 
 # (模糊匹配的文件名片段, 朝代, 类型, featured, 采样上限)
 # 片段修正说明(相对原简报):
-# - 宋诗/全唐诗/全宋词 在本数据集无同名文件,主语料为 poet.song.*/poet.tang.*/ci.song.*,
-#   但这些片段会同时命中 error/strains/rank 目录的同名或同前缀文件(无 paragraphs 的杂项),
-#   会使 --check 的非空断言失败,故剔除;shijing 提为全量、新增 shuimotangshi 以补足规模。
-# - yuanqu 含 143 条无 paragraphs 记录,同样会破坏 --check,故剔除。
+# - 宋诗/全宋词 在本数据集无同名文件;全唐诗/全宋词 实际主语料为 poet.tang.*/ci.song.*,
+#   load_source 已过滤无内容(paragraphs 为空或全空白/标点)的记录,可安全纳入。
 # - 明诗/清诗/小学/初中/高中 数据集中不存在对应文件。
 SOURCES = [
     ("唐诗三百首", "唐", "诗", True, 0),        # 0 = 全量
@@ -27,6 +30,8 @@ SOURCES = [
     ("shijing", "先秦", "诗", True, 0),
     ("chuci", "先秦", "诗", False, 40),
     ("shuimotangshi", "唐", "诗", False, 0),
+    ("poet.tang", "唐", "诗", False, 600),
+    ("ci.song", "宋", "词", False, 300),
 ]
 
 
@@ -59,6 +64,25 @@ def normalize_record(raw: dict, dynasty: str, kind: str, featured: bool) -> dict
     }
 
 
+def to_simplified(rec: dict) -> dict:
+    for key in ("title", "author"):
+        rec[key] = _T2S.convert(rec[key])
+    rec["paragraphs"] = [_T2S.convert(p) for p in rec["paragraphs"]]
+    for key in ("translation", "notes", "appreciation"):
+        value = rec[key]
+        if isinstance(value, list):
+            # poet.tang 等源的 notes/translation 可能为 list,拼接为字符串
+            value = "\n".join(x for x in value if isinstance(x, str) and x.strip())
+        if value:
+            rec[key] = _T2S.convert(value)
+    return rec
+
+
+def has_content(rec: dict) -> bool:
+    # 丢弃 paragraphs 为空或全为空白/标点的记录
+    return any(PUNCT.sub("", line) for line in rec["paragraphs"])
+
+
 def dedupe(records: list[dict]) -> list[dict]:
     seen, out = set(), []
     for rec in records:
@@ -84,6 +108,7 @@ def load_source(dataset: Path, fragment: str, dynasty: str, kind: str, featured:
         if not isinstance(data, list):
             continue
         records.extend(normalize_record(raw, dynasty, kind, featured) for raw in data if isinstance(raw, dict))
+    records = [rec for rec in records if has_content(rec)]
     if cap and len(records) > cap:
         records = rng.sample(records, cap)
     return records
@@ -96,6 +121,8 @@ def build(dataset_dir: Path) -> list[dict]:
     records = []
     for fragment, dynasty, kind, featured, cap in SOURCES:
         records.extend(load_source(dataset_dir, fragment, dynasty, kind, featured, cap, rng))
+    # 繁→简转换(normalize 之后、去重与 id 生成之前;转换幂等)
+    records = [to_simplified(rec) for rec in records]
     records = dedupe(records)
     for rec in records:
         first = PUNCT.sub("", rec["paragraphs"][0]) if rec["paragraphs"] else ""
