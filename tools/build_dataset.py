@@ -46,7 +46,7 @@ def dedupe_key(rec: dict) -> tuple:
 
 
 def normalize_record(raw: dict, dynasty: str, kind: str, featured: bool) -> dict:
-    title = (raw.get("title") or raw.get("name") or raw.get("chapter") or "").strip()
+    title = (raw.get("title") or raw.get("name") or raw.get("rhythmic") or raw.get("chapter") or "").strip()
     paragraphs = raw.get("paragraphs") or raw.get("content") or []
     paragraphs = [" ".join(line) if isinstance(line, list) else line for line in paragraphs]
     return {
@@ -147,7 +147,7 @@ def main() -> None:
                   "translation", "notes", "appreciation", "tags", "difficulty", "featured"}
         for rec in data:
             assert set(rec) == fields, f"字段不符: {set(rec) ^ fields}"
-            assert isinstance(rec["id"], int) and rec["paragraphs"], rec["title"]
+            assert isinstance(rec["id"], int) and rec["paragraphs"] and rec["title"], rec["title"]
         print(f"OK: {len(data)} 首, featured {sum(1 for r in data if r['featured'])} 首")
         return
     records = build(REPO_DIR)
