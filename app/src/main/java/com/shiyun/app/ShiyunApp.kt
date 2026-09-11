@@ -4,7 +4,10 @@ import android.app.Application
 import android.util.Log
 import com.shiyun.app.data.assets.AssetsPoemImporter
 import com.shiyun.app.data.db.ShiyunDatabase
+import com.shiyun.app.data.repository.DailyRepository
+import com.shiyun.app.data.repository.FavoriteRepository
 import com.shiyun.app.data.repository.PoemRepository
+import com.shiyun.app.data.repository.QuizRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,6 +16,9 @@ import kotlinx.coroutines.launch
 class AppContainer(context: android.content.Context) {
     val database: ShiyunDatabase = ShiyunDatabase.build(context)
     val poemRepository = PoemRepository(database.poemDao(), AssetsPoemImporter(context))
+    val favoriteRepository = FavoriteRepository(database.favoriteDao())
+    val dailyRepository = DailyRepository(database.dailyRecordDao())
+    val quizRepository = QuizRepository(database.quizStateDao())
 }
 
 class ShiyunApp : Application() {
