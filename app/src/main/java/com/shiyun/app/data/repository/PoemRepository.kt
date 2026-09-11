@@ -18,6 +18,8 @@ class PoemRepository(
         if (dao.count() == 0) importer.importInto(dao)
     }
 
+    suspend fun isEmpty(): Boolean = withContext(io) { dao.count() == 0 }
+
     fun observePoem(id: Long): Flow<Poem?> = dao.observeById(id)
 
     suspend fun poemById(id: Long): Poem? = withContext(io) { dao.getById(id) }

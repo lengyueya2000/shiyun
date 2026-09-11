@@ -18,22 +18,54 @@ data class HomeUiState(
     val poem: Poem? = null,
     val checkedIn: Boolean = false,
     val streak: Int = 0,
+    val loadFailed: Boolean = false,
 )
 
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val today: LocalDate = LocalDate.now()
     private val poem = MutableStateFlow<Poem?>(null)
+    private val loading = MutableStateFlow(true)
+    private val loadFailed = MutableStateFlow(false)
 
     val state: StateFlow<HomeUiState> =
-        combine(poem, container.dailyRepository.observeByDate(today), container.dailyRepository.observeStreak()) { p, record, streak ->
-            HomeUiState(loading = false, poem = p, checkedIn = record?.checkedIn == true, streak = streak)
+        combine(
+            poem,
+            container.dailyRepository.observeByDate(today),
+            container.dailyRepository.observeStreak(),
+            loading,
+            loadFailed,
+        ) { p, record, streak, isLoading, failed ->
+            HomeUiState(
+                loading = isLoading,
+                poem = p,
+                checkedIn = record?.checkedIn == true,
+                streak = streak,
+                loadFailed = failed,
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
     init {
+        load()
+    }
+
+    fun load() {
+        loading.value = true
+        loadFailed.value = false
         viewModelScope.launch {
-            container.poemRepository.importIfNeeded()
-            val pool = container.poemRepository.featured().ifEmpty { container.poemRepository.all() }
-            poem.value = DailyPoemSelector.select(pool, today)
+            try {
+                container.poemRepository.importIfNeeded()
+                val repo = container.poemRepository
+                val pool = repo.featured().ifEmpty { repo.all() }
+                if (pool.isEmpty() && repo.isEmpty()) {
+                    loadFailed.value = true
+                } else {
+                    poem.value = DailyPoemSelector.select(pool, today)
+                }
+            } catch (e: Exception) {
+                loadFailed.value = true
+            } finally {
+                loading.value = false
+            }
         }
     }
 
